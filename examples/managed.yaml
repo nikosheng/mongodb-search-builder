@@ -1,0 +1,16 @@
+context: your-kubernetes-context
+namespace: mongodb
+name: mdb-rs
+mode: managed
+version: 8.3.4-ent
+members: 3
+searchReplicas: 2
+timeout: 20m
+opsManager:
+  url: https://cloud.mongodb.com
+  orgId: your-organization-id
+  project: search-demo
+  userEnv: OPS_MANAGER_PUBLIC_KEY
+  apiKeyEnv: OPS_MANAGER_PRIVATE_KEY
+adminPasswordEnv: MONGODB_ADMIN_PASSWORD
+syncPasswordEnv: MONGODB_SEARCH_SYNC_PASSWORD

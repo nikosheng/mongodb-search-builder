@@ -1,0 +1,21 @@
+context: your-kubernetes-context
+namespace: mongodb
+name: external-search
+mode: external
+searchReplicas: 2
+timeout: 20m
+syncPasswordEnv: MONGODB_SEARCH_SYNC_PASSWORD
+external:
+  hosts:
+    - db1.example.com:27017
+    - db2.example.com:27017
+    - db3.example.com:27017
+  hostname: search.example.com
+  databaseCAFile: /path/to/database-ca.pem
+  searchCAFile: /path/to/search-ca.pem
+  searchCertFile: /path/to/mongot.crt
+  searchKeyFile: /path/to/mongot.key
+  envoyCertFile: /path/to/envoy.crt
+  envoyKeyFile: /path/to/envoy.key
+  envoyClientCertFile: /path/to/envoy-client.crt
+  envoyClientKeyFile: /path/to/envoy-client.key
