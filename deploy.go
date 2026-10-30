@@ -196,15 +196,21 @@ func (a *App) init(ctx context.Context) error {
 	}
 	return nil
 }
-func (a *App) cert(ctx context.Context, name string, dns []string, usages []interface{}) error {
-	spec := m("secretName", name, "issuerRef", m("name", a.c.Name+"-ca-issuer", "kind", "ClusterIssuer"), "duration", "8760h", "renewBefore", "720h", "privateKey", m("algorithm", "RSA", "size", int64(2048)), "usages", usages)
+func certSpec(name, issuer string, dns []string, usages []interface{}) map[string]interface{} {
+	spec := m("secretName", name, "issuerRef", m("name", issuer, "kind", "ClusterIssuer"), "duration", "8760h", "renewBefore", "720h", "privateKey", m("algorithm", "RSA", "size", int64(2048)), "usages", usages)
 	ds := make([]interface{}, len(dns))
 	for i, v := range dns {
 		ds[i] = v
 	}
 	if len(ds) > 0 {
 		spec["dnsNames"] = ds
+	} else {
+		spec["commonName"] = name
 	}
+	return spec
+}
+func (a *App) cert(ctx context.Context, name string, dns []string, usages []interface{}) error {
+	spec := certSpec(name, a.c.Name+"-ca-issuer", dns, usages)
 	if err := a.put(ctx, certG, "cert-manager.io/v1", "Certificate", a.c.Namespace, name, m("spec", spec)); err != nil {
 		return err
 	}

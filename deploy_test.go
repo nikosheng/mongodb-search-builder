@@ -155,6 +155,26 @@ func TestSearchSpecVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestCertificateSpecIdentity(t *testing.T) {
+	// The longest valid deployment name must still produce a valid X.509 common name.
+	name := "certs-" + strings.Repeat("a", 32) + "-search-lb-0-client-cert"
+	client := certSpec(name, "demo-ca-issuer", nil, []interface{}{"client auth"})
+	if got := client["commonName"]; got != name || len(name) > 64 {
+		t.Fatalf("client commonName = %v, length = %d", got, len(name))
+	}
+	if _, ok := client["dnsNames"]; ok {
+		t.Fatal("client certificate should not contain empty dnsNames")
+	}
+	server := certSpec("server", "demo-ca-issuer", []string{"search.example.com"}, []interface{}{"server auth"})
+	if _, ok := server["commonName"]; ok {
+		t.Fatal("server certificate should use DNS names")
+	}
+	dns, ok := server["dnsNames"].([]interface{})
+	if !ok || len(dns) != 1 || dns[0] != "search.example.com" {
+		t.Fatalf("server dnsNames = %v", server["dnsNames"])
+	}
+}
 func TestOwnershipRejectsOtherResources(t *testing.T) {
 	ctx := context.Background()
 	existing := obj("v1", "ConfigMap", "ns", "x", nil)
