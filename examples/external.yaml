@@ -4,7 +4,7 @@ name: external-search
 mode: external
 searchReplicas: 2
 timeout: 20m
-syncPasswordEnv: MONGODB_SEARCH_SYNC_PASSWORD
+syncPassword: your-existing-search-sync-user-password
 external:
   hosts:
     - db1.example.com:27017

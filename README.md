@@ -86,7 +86,7 @@ export MONGODB_ADMIN_PASSWORD='replace-with-admin-password'
 export MONGODB_SEARCH_SYNC_PASSWORD='replace-with-sync-password'
 ```
 
-For external mode, only the Search sync password is required. `examples/managed.yaml` and `examples/external.yaml` show environment-variable configurations. Credentials are also stored in Kubernetes Secrets during deployment.
+For external mode, only the Search sync password is required. `examples/managed.yaml` and `examples/external.yaml` use inline credential placeholders; replace them with your own values or the corresponding environment-variable fields. Credentials are also stored in Kubernetes Secrets during deployment.
 
 ## Use case 1: Managed replica set with one Search replica
 

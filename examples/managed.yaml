@@ -10,7 +10,7 @@ opsManager:
   url: https://cloud.mongodb.com
   orgId: your-organization-id
   project: search-demo
-  userEnv: OPS_MANAGER_PUBLIC_KEY
-  apiKeyEnv: OPS_MANAGER_PRIVATE_KEY
-adminPasswordEnv: MONGODB_ADMIN_PASSWORD
-syncPasswordEnv: MONGODB_SEARCH_SYNC_PASSWORD
+  publicKey: your-public-key
+  privateKey: your-private-key
+adminPassword: your-admin-password
+syncPassword: your-search-sync-password
