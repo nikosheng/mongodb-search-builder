@@ -53,40 +53,22 @@ kubectl config get-contexts -o name
 
 The kubeconfig follows the normal client-go loading rules, including `KUBECONFIG` when set. All commands validate the complete configuration, including `status` and `uninstall`, so retain the configuration for later operations.
 
-### Credentials: inline or environment variables
+### Credentials
 
-You can put values directly in the YAML as shown in the use cases, or specify the names of environment variables instead. For each credential, a **nonempty inline value takes precedence** when both are specified. Environment variable values must be nonempty when the deployment stage reads them.
-
-| Inline value | Alternative field containing an environment variable name | Used by |
-| --- | --- | --- |
-| `opsManager.publicKey` | `opsManager.userEnv` | Managed |
-| `opsManager.privateKey` | `opsManager.apiKeyEnv` | Managed |
-| `adminPassword` | `adminPasswordEnv` | Managed |
-| `syncPassword` | `syncPasswordEnv` | Managed and external |
-
-For example, to use environment variables in managed mode, **replace** the four inline credential fields with these YAML entries, keeping the other settings:
+Enter your credentials directly in `config.yaml`. For a managed deployment, fill in all four values:
 
 ```yaml
 opsManager:
   url: https://cloud.mongodb.com
   orgId: your-organization-id
   project: search-demo
-  userEnv: OPS_MANAGER_PUBLIC_KEY
-  apiKeyEnv: OPS_MANAGER_PRIVATE_KEY
-adminPasswordEnv: MONGODB_ADMIN_PASSWORD
-syncPasswordEnv: MONGODB_SEARCH_SYNC_PASSWORD
+  publicKey: 'your-public-key'
+  privateKey: 'your-private-key'
+adminPassword: 'your-admin-password'
+syncPassword: 'your-search-sync-password'
 ```
 
-Set these variables in the same shell before running `install`, `init`, `deploy-db`, or `deploy-search` as applicable:
-
-```sh
-export OPS_MANAGER_PUBLIC_KEY='replace-with-public-key'
-export OPS_MANAGER_PRIVATE_KEY='replace-with-private-key'
-export MONGODB_ADMIN_PASSWORD='replace-with-admin-password'
-export MONGODB_SEARCH_SYNC_PASSWORD='replace-with-sync-password'
-```
-
-For external mode, only the Search sync password is required. `examples/managed.yaml` and `examples/external.yaml` use inline credential placeholders; replace them with your own values or the corresponding environment-variable fields. Credentials are also stored in Kubernetes Secrets during deployment.
+For external mode, set `syncPassword` to the password of the existing Search synchronization user. Replace the placeholders in `examples/managed.yaml` or `examples/external.yaml` with your own values. Credentials are also stored in Kubernetes Secrets during deployment.
 
 ## Use case 1: Managed replica set with one Search replica
 
@@ -187,7 +169,7 @@ The operator manages Search endpoint settings on the managed MongoDB deployment.
 Complete these steps before either external use case:
 
 1. Verify the existing replica set runs MongoDB Enterprise 8.3 or later, uses TLS, and has network-reachable member addresses. Obtain the public CA certificate that signed the MongoDB server certificates.
-2. In Cloud Manager or Ops Manager, open **Security > Users**, add the user `search-sync-source` in authentication database `admin`, and grant it the `searchCoordinator` role on `admin`. Set a strong password. If your deployment is managed by another system, create the equivalent user through that system. Use this same password for `syncPassword` or its environment variable. The CLI does **not** create the user in external mode.
+2. In Cloud Manager or Ops Manager, open **Security > Users**, add the user `search-sync-source` in authentication database `admin`, and grant it the `searchCoordinator` role on `admin`. Set a strong password. If your deployment is managed by another system, create the equivalent user through that system. Use this same password for `syncPassword`. The CLI does **not** create the user in external mode.
 3. Choose a DNS name such as `search.example.com` for the external Search endpoint. Arrange for it to resolve to the Kubernetes LoadBalancer ingress, and ensure the MongoDB members can reach port `27028`. Kubernetes must also be able to reach each member on the configured MongoDB port. Open the necessary firewall rules in both directions.
 4. Obtain the Search CA and certificates listed in the relevant use case below. Use PEM files and unencrypted private keys; include intermediate certificates in the certificate file if needed. Configure the external MongoDB deployment to trust the Search CA and provide the TLS client identity required by your deployment. The CLI verifies that the provided Search certificates and keys match, chain to `searchCAFile`, have the appropriate server/client purpose, and, where required, match `external.hostname`.
 5. Prepare to configure the external `mongod` startup parameters in [Connect external MongoDB to Search](#connect-external-mongodb-to-search). The CLI cannot change those settings for you.
@@ -387,10 +369,10 @@ Unknown fields are rejected. YAML and JSON use the same field names. Defaults ar
 | `opsManager.url` | Managed | Required Ops Manager or Cloud Manager base URL. |
 | `opsManager.orgId` | Managed | Required organization ID. |
 | `opsManager.project` | Managed | Required project name. |
-| `opsManager.publicKey` / `opsManager.userEnv` | Managed | Inline public key or name of the environment variable containing it. |
-| `opsManager.privateKey` / `opsManager.apiKeyEnv` | Managed | Inline private key or name of the environment variable containing it. |
-| `adminPassword` / `adminPasswordEnv` | Managed | Inline `mdb-admin` password or environment variable name. |
-| `syncPassword` / `syncPasswordEnv` | All | Inline `search-sync-source` password or environment variable name. |
+| `opsManager.publicKey` | Managed | Cloud Manager or Ops Manager public API key. |
+| `opsManager.privateKey` | Managed | Cloud Manager or Ops Manager private API key. |
+| `adminPassword` | Managed | Password for the `mdb-admin` user. |
+| `syncPassword` | All | Password for the `search-sync-source` user. |
 | `external.hosts` | External | Required nonempty list of MongoDB replica set members in `host:port` format. |
 | `external.hostname` | External | Required DNS name for the Search endpoint, without a port. Must match the public-facing Search or Envoy server certificate. |
 | `external.databaseCAFile` | External | Required local PEM file containing the CA trusted for the MongoDB server certificates. |
@@ -420,14 +402,14 @@ All commands accept `-config FILE`. `install` runs the stages below and calls `s
 | `status` | Prints resource phases, pod phases, and external ingress if available. |
 | `uninstall` | Removes deployment resources; requires `--yes`. See [Teardown](#teardown). |
 
-Stages can be rerun after resolving errors. Resources already present are not adopted or overwritten unless marked as owned by this deployment. Keep the same configuration, context, namespace, and name for reruns and teardown. Credentials named by environment variables must be present for stages that use them.
+Stages can be rerun after resolving errors. Resources already present are not adopted or overwritten unless marked as owned by this deployment. Keep the same configuration, context, namespace, and name for reruns and teardown.
 
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
 | Config parse or validation error | Check spelling and indentation, required fields, DNS-label names, version format, and positive timeout. Unknown fields are rejected. |
-| Environment variable is required | Set the variable named by the corresponding `*Env` field in the current shell, or supply a nonempty inline value. Inline values take precedence. |
+| Credential is required | Fill in the required inline credential in `config.yaml` and check that it is not empty. |
 | Cannot connect to Kubernetes | Verify the configured context exists, kubeconfig credentials are valid, the API is reachable, and the identity has sufficient permissions. |
 | Helm install or image pull fails | Check access to chart registries and container registries, chart compatibility, cluster capacity, and events. |
 | Resource wait times out | Inspect resource status, pod events and logs, storage, and network access. Increase `timeout` if provisioning needs more time; rerun the failed stage after fixing the cause. |
