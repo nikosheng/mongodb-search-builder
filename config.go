@@ -9,20 +9,33 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 )
 
+type ResourceQuantities struct {
+	CPU    string `json:"cpu"`
+	Memory string `json:"memory"`
+}
+
+type Resources struct {
+	Requests ResourceQuantities `json:"requests"`
+	Limits   ResourceQuantities `json:"limits"`
+}
+
 type Config struct {
-	Context                 string `json:"context"`
-	Namespace               string `json:"namespace"`
-	Name                    string `json:"name"`
-	Mode                    string `json:"mode"`
-	Version                 string `json:"version"`
-	Members                 int    `json:"members"`
-	SearchReplicas          int    `json:"searchReplicas"`
-	Timeout                 string `json:"timeout"`
-	OperatorChartVersion    string `json:"operatorChartVersion"`
-	CertManagerChartVersion string `json:"certManagerChartVersion"`
+	Context                 string    `json:"context"`
+	Namespace               string    `json:"namespace"`
+	Name                    string    `json:"name"`
+	Mode                    string    `json:"mode"`
+	Version                 string    `json:"version"`
+	Members                 int       `json:"members"`
+	SearchReplicas          int       `json:"searchReplicas"`
+	MongoDBResources        Resources `json:"mongodbResources"`
+	SearchResources         Resources `json:"searchResources"`
+	Timeout                 string    `json:"timeout"`
+	OperatorChartVersion    string    `json:"operatorChartVersion"`
+	CertManagerChartVersion string    `json:"certManagerChartVersion"`
 	OpsManager              struct {
 		URL        string `json:"url"`
 		OrgID      string `json:"orgId"`
@@ -100,6 +113,15 @@ func (c *Config) validate() error {
 	if t, err := time.ParseDuration(c.Timeout); err != nil || t <= 0 {
 		return fmt.Errorf("timeout must be a positive duration")
 	}
+	if c.Mode == "external" && c.MongoDBResources != (Resources{}) {
+		return fmt.Errorf("mongodbResources applies only to managed mode")
+	}
+	if err := validateResources("mongodbResources", c.MongoDBResources); err != nil {
+		return err
+	}
+	if err := validateResources("searchResources", effectiveSearchResources(c.SearchResources)); err != nil {
+		return err
+	}
 	if c.SyncPassword == "" && c.SyncPasswordEnv == "" {
 		return fmt.Errorf("syncPassword or syncPasswordEnv is required")
 	}
@@ -134,6 +156,44 @@ func (c *Config) validate() error {
 		}
 		if c.SearchReplicas > 1 && (c.External.EnvoyCertFile == "" || c.External.EnvoyKeyFile == "" || c.External.EnvoyClientCertFile == "" || c.External.EnvoyClientKeyFile == "") {
 			return fmt.Errorf("external multi-replica mode requires Envoy server and client certificate files")
+		}
+	}
+	return nil
+}
+
+func effectiveSearchResources(r Resources) Resources {
+	if r.Requests.CPU == "" {
+		r.Requests.CPU = "2"
+	}
+	if r.Requests.Memory == "" {
+		r.Requests.Memory = "4Gi"
+	}
+	return r
+}
+
+func validateResources(name string, r Resources) error {
+	for _, entry := range []struct {
+		name, request, limit string
+	}{
+		{"cpu", r.Requests.CPU, r.Limits.CPU},
+		{"memory", r.Requests.Memory, r.Limits.Memory},
+	} {
+		var request, limit resource.Quantity
+		for _, v := range []struct {
+			kind, value string
+			parsed      *resource.Quantity
+		}{{"requests", entry.request, &request}, {"limits", entry.limit, &limit}} {
+			if v.value == "" {
+				continue
+			}
+			q, err := resource.ParseQuantity(v.value)
+			if err != nil || q.Sign() <= 0 {
+				return fmt.Errorf("%s.%s.%s must be a positive Kubernetes quantity", name, v.kind, entry.name)
+			}
+			*v.parsed = q
+		}
+		if entry.request != "" && entry.limit != "" && request.Cmp(limit) > 0 {
+			return fmt.Errorf("%s.requests.%s must not exceed its limit", name, entry.name)
 		}
 	}
 	return nil

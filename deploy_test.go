@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -153,6 +154,100 @@ func TestSearchSpecVariants(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestResourceSpecifications(t *testing.T) {
+	c := &Config{Name: "demo", Members: 3, Version: "8.3.4-ent", Mode: "managed", SearchReplicas: 2}
+	if _, ok := dbSpec(c)["podSpec"]; ok {
+		t.Fatal("database resource overrides should be absent by default")
+	}
+	searchResources := func(c *Config) interface{} {
+		return searchSpec(c)["clusters"].([]interface{})[0].(map[string]interface{})["resourceRequirements"]
+	}
+	if got, want := searchResources(c), m("requests", m("cpu", "2", "memory", "4Gi")); !reflect.DeepEqual(got, want) {
+		t.Fatalf("default search resources = %#v; want %#v", got, want)
+	}
+	c.MongoDBResources = Resources{Requests: ResourceQuantities{CPU: "500m", Memory: "2Gi"}, Limits: ResourceQuantities{CPU: "2", Memory: "4Gi"}}
+	c.SearchResources = Resources{Requests: ResourceQuantities{Memory: "6Gi"}, Limits: ResourceQuantities{CPU: "3", Memory: "8Gi"}}
+	db := dbSpec(c)
+	container, ok, err := unstructured.NestedSlice(db, "podSpec", "podTemplate", "spec", "containers")
+	if err != nil || !ok || len(container) != 1 {
+		t.Fatalf("database container = %#v, found %t, error %v", container, ok, err)
+	}
+	wantContainer := m("name", "mongodb-enterprise-database", "resources", m("requests", m("cpu", "500m", "memory", "2Gi"), "limits", m("cpu", "2", "memory", "4Gi")))
+	if !reflect.DeepEqual(container[0], wantContainer) {
+		t.Fatalf("database container = %#v; want %#v", container[0], wantContainer)
+	}
+	wantSearch := m("requests", m("cpu", "2", "memory", "6Gi"), "limits", m("cpu", "3", "memory", "8Gi"))
+	for _, mode := range []string{"managed", "external"} {
+		c.Mode = mode
+		if got := searchResources(c); !reflect.DeepEqual(got, wantSearch) {
+			t.Fatalf("%s search resources = %#v; want %#v", mode, got, wantSearch)
+		}
+	}
+}
+
+func TestResourceConfigValidation(t *testing.T) {
+	base, err := loadConfig("config.yaml.sample")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name      string
+		edit      func(*Config)
+		wantError bool
+	}{
+		{"valid", func(c *Config) {
+			c.MongoDBResources = Resources{Requests: ResourceQuantities{CPU: "500m", Memory: "2Gi"}, Limits: ResourceQuantities{CPU: "1", Memory: "4Gi"}}
+		}, false},
+		{"limit only database", func(c *Config) { c.MongoDBResources.Limits.CPU = "1" }, false},
+		{"invalid quantity", func(c *Config) { c.MongoDBResources.Requests.Memory = "4Xi" }, true},
+		{"negative", func(c *Config) { c.SearchResources.Requests.CPU = "-1" }, true},
+		{"zero", func(c *Config) { c.SearchResources.Limits.Memory = "0" }, true},
+		{"request exceeds limit", func(c *Config) {
+			c.MongoDBResources = Resources{Requests: ResourceQuantities{CPU: "1500m"}, Limits: ResourceQuantities{CPU: "1"}}
+		}, true},
+		{"search default exceeds limit", func(c *Config) { c.SearchResources.Limits.Memory = "2Gi" }, true},
+		{"search partial override", func(c *Config) {
+			c.SearchResources = Resources{Requests: ResourceQuantities{Memory: "1Gi"}, Limits: ResourceQuantities{Memory: "2Gi"}}
+		}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := *base
+			tt.edit(&c)
+			err := c.validate()
+			if (err != nil) != tt.wantError {
+				t.Fatalf("validate = %v; want error %t", err, tt.wantError)
+			}
+		})
+	}
+	external, err := loadConfig("examples/external.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	external.MongoDBResources.Requests.CPU = "1"
+	if err = external.validate(); err == nil || !strings.Contains(err.Error(), "managed mode") {
+		t.Fatalf("external database resources: %v", err)
+	}
+}
+
+func TestResourceConfigParsing(t *testing.T) {
+	base, err := os.ReadFile("config.yaml.sample")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := string(base) + "\nmongodbResources:\n  requests:\n    cpu: \"500m\"\n    memory: 2Gi\nsearchResources:\n  limits:\n    cpu: \"4\"\n    memory: 8Gi\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := loadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.MongoDBResources.Requests.CPU != "500m" || c.SearchResources.Limits.Memory != "8Gi" {
+		t.Fatalf("resources were not parsed: %#v %#v", c.MongoDBResources, c.SearchResources)
 	}
 }
 

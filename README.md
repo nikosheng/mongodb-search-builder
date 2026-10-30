@@ -16,7 +16,7 @@ The examples use placeholder values. Replace them before running a deployment. T
 For all use cases:
 
 1. Install Go 1.24 or newer to build the CLI.
-2. Have a running Kubernetes cluster, a locally configured kubeconfig context, sufficient cluster privileges, and persistent storage. The cluster needs enough capacity for the database, operator, cert-manager, Search, and, where applicable, Envoy. The CLI requests **2 CPU and 4 GiB memory per Search replica**.
+2. Have a running Kubernetes cluster, a locally configured kubeconfig context, sufficient cluster privileges, and persistent storage. The cluster needs enough capacity for the database, operator, cert-manager, Search, and, where applicable, Envoy. The CLI defaults to requests of **2 CPU and 4 GiB memory per Search replica**; see [Resource sizing](#resource-sizing-and-scaling) to change them.
 3. Ensure the machine running the CLI can access the Kubernetes API and the OCI registries containing the Helm charts, and that cluster nodes can pull the required images.
 4. Choose a unique resource `name` and namespace. Names must use lowercase DNS-label characters; `name` is limited to 32 characters. For managed deployments, choose a name unique across the cluster because it is also used for cluster-scoped certificate issuers.
 
@@ -363,6 +363,8 @@ Unknown fields are rejected. YAML and JSON use the same field names. Defaults ar
 | `version` | Managed | Enterprise server version, e.g. `8.3.4-ent`; default `8.3.4-ent`. Must be 8.3 or later in `X.Y.Z-ent` format. |
 | `members` | Managed | Database member count, 1–50; default `3`. Not used to create external members. |
 | `searchReplicas` | All | Number of `mongot` replicas; default `1`. Values greater than 1 enable managed Envoy. |
+| `mongodbResources` | Managed | Optional `requests` and `limits` for CPU and memory on each MongoDB database container. |
+| `searchResources` | All | Optional `requests` and `limits` for CPU and memory on each Search container. Unspecified requests default to 2 CPU and 4Gi memory. |
 | `timeout` | All | Positive Go duration, e.g. `20m`; default `15m`. Used for individual waits and Helm operations, not a single overall installation deadline. |
 | `operatorChartVersion` | All | Optional MongoDB operator Helm chart version. Omit to use Helm's chart selection. |
 | `certManagerChartVersion` | All | Optional cert-manager Helm chart version. Omit to use Helm's chart selection. |
@@ -403,6 +405,50 @@ All commands accept `-config FILE`. `install` runs the stages below and calls `s
 | `uninstall` | Removes deployment resources; requires `--yes`. See [Teardown](#teardown). |
 
 Stages can be rerun after resolving errors. Resources already present are not adopted or overwritten unless marked as owned by this deployment. Keep the same configuration, context, namespace, and name for reruns and teardown.
+
+## Resource sizing and scaling
+
+Add optional resource settings to `config.yaml` before installation or to update an existing deployment:
+
+```yaml
+mongodbResources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+searchResources:
+  requests:
+    cpu: "2"
+    memory: 4Gi
+  limits:
+    cpu: "3"
+    memory: 6Gi
+```
+
+These settings are **per container, per replica**, not totals for the deployment. `mongodbResources` applies to the managed `mongodb-enterprise-database` container; the CLI does not manage resources on an external database, the MongoDB agent, or Envoy. `searchResources` applies to each Search container in either mode. Do not include `mongodbResources` in external mode.
+
+Use positive Kubernetes resource quantities: CPU `"1"` is one core and `"500m"` is half a core; memory examples include `512Mi` and `4Gi`. Quote numeric CPU values. Each supplied request must be no greater than its corresponding limit. You can omit individual fields or limits. For Search, omitted request fields default individually to CPU `"2"` and memory `4Gi`; any limits must be at least those effective requests. If `mongodbResources` is omitted, the CLI does not set database container resources. If limits are omitted, the CLI does not set them; Kubernetes admission policies may add defaults.
+
+### Change CPU or memory after deployment
+
+1. Edit `mongodbResources` and/or `searchResources` in the same configuration file used to deploy. Ensure the cluster has sufficient capacity for the new requests.
+2. Apply the relevant stages. For an external replica set, run only `deploy-search`:
+
+   ```sh
+   ./mongodb-search deploy-db -config config.yaml
+   ./mongodb-search deploy-search -config config.yaml
+   ./mongodb-search status -config config.yaml
+   ```
+
+   Alternatively, rerun `./mongodb-search install -config config.yaml` to run all stages in order. These commands apply updates to CLI-owned resources; they do not directly resize the external database.
+
+3. Check the operator's reconciliation, pod rollout, and actual container requests and limits using your Kubernetes tooling. `status` and the stage waits check resource phases, which can still reflect an earlier reconciliation; they do **not** prove that the updated pods are ready. Updating pod templates can restart pods and affect availability; a single Search replica can experience an interruption. If requests exceed available capacity, pods may remain pending. The exact rollout behavior depends on your operator and Kubernetes versions.
+
+### Change replica counts
+
+Change `members` for a managed replica set or `searchReplicas` for Search, then rerun the relevant stage. For a transition from one Search replica to multiple replicas, run `certs` before `deploy-search` to prepare the Envoy certificates. External mode requires the four Envoy certificate and key paths in the configuration, and its Search endpoint and MongoDB connectivity must be checked after the transition. Verify that the operator has completed the rollout and the replica set and Search are healthy before continuing. These scaling paths have not been verified on a live cluster.
 
 ## Troubleshooting
 

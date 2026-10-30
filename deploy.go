@@ -77,7 +77,7 @@ func (a *App) deployDB(ctx context.Context) error {
 	if err = a.secret(ctx, c.Name+"-om-credentials", map[string]string{"publicKey": user, "privateKey": key, "user": user, "publicApiKey": key}); err != nil {
 		return err
 	}
-	spec := m("type", "ReplicaSet", "members", int64(c.Members), "version", c.Version, "opsManager", m("configMapRef", m("name", c.Name+"-om-project")), "credentials", c.Name+"-om-credentials", "security", m("certsSecretPrefix", "certs", "tls", m("enabled", true, "ca", c.Name+"-ca"), "authentication", m("enabled", true, "ignoreUnknownUsers", true, "modes", []interface{}{"SCRAM"})), "persistent", true)
+	spec := dbSpec(c)
 	if err = a.put(ctx, dbG, "mongodb.com/v1", "MongoDB", c.Namespace, c.Name, m("spec", spec)); err != nil {
 		return err
 	}
@@ -99,6 +99,37 @@ func (a *App) deployDB(ctx context.Context) error {
 	}
 	return nil
 }
+
+func resourceRequirements(r Resources) map[string]interface{} {
+	result := m()
+	for _, entry := range []struct {
+		name   string
+		values ResourceQuantities
+	}{{"requests", r.Requests}, {"limits", r.Limits}} {
+		values := m()
+		if entry.values.CPU != "" {
+			values["cpu"] = entry.values.CPU
+		}
+		if entry.values.Memory != "" {
+			values["memory"] = entry.values.Memory
+		}
+		if len(values) > 0 {
+			result[entry.name] = values
+		}
+	}
+	return result
+}
+
+func dbSpec(c *Config) map[string]interface{} {
+	spec := m("type", "ReplicaSet", "members", int64(c.Members), "version", c.Version, "opsManager", m("configMapRef", m("name", c.Name+"-om-project")), "credentials", c.Name+"-om-credentials", "security", m("certsSecretPrefix", "certs", "tls", m("enabled", true, "ca", c.Name+"-ca"), "authentication", m("enabled", true, "ignoreUnknownUsers", true, "modes", []interface{}{"SCRAM"})), "persistent", true)
+	if resources := resourceRequirements(c.MongoDBResources); len(resources) > 0 {
+		spec["podSpec"] = m("podTemplate", m("spec", m("containers", []interface{}{
+			m("name", "mongodb-enterprise-database", "resources", resources),
+		})))
+	}
+	return spec
+}
+
 func (a *App) deploySearch(ctx context.Context) error {
 	c := a.c
 	sync, err := credential(c.SyncPassword, c.SyncPasswordEnv, "syncPassword")
@@ -140,7 +171,7 @@ func (a *App) deploySearch(ctx context.Context) error {
 
 func searchSpec(c *Config) map[string]interface{} {
 	source := m("mongodbResourceRef", m("name", c.Name))
-	cluster := m("replicas", int64(c.SearchReplicas), "resourceRequirements", m("requests", m("cpu", "2", "memory", "4Gi")))
+	cluster := m("replicas", int64(c.SearchReplicas), "resourceRequirements", resourceRequirements(effectiveSearchResources(c.SearchResources)))
 	if c.Mode == "external" {
 		hosts := make([]interface{}, len(c.External.Hosts))
 		for i, h := range c.External.Hosts {

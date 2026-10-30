@@ -4,6 +4,10 @@ name: external-search
 mode: external
 searchReplicas: 2
 timeout: 20m
+# Optional resources for each Search container.
+# searchResources:
+#   requests: {cpu: "2", memory: 4Gi}
+#   limits: {cpu: "3", memory: 6Gi}
 syncPassword: your-existing-search-sync-user-password
 external:
   hosts:

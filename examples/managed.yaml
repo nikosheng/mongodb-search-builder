@@ -6,6 +6,13 @@ version: 8.3.4-ent
 members: 3
 searchReplicas: 2
 timeout: 20m
+# Optional per-container resource settings; adjust to your workload.
+# mongodbResources:
+#   requests: {cpu: "1", memory: 2Gi}
+#   limits: {cpu: "2", memory: 4Gi}
+# searchResources:
+#   requests: {cpu: "2", memory: 4Gi}
+#   limits: {cpu: "3", memory: 6Gi}
 opsManager:
   url: https://cloud.mongodb.com
   orgId: your-organization-id
