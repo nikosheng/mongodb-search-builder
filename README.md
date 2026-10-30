@@ -13,17 +13,17 @@ Deploy MongoDB Enterprise replica sets and MongoDB Search / Vector Search to one
 
 ```sh
 go build -o mongodb-search .
-cp examples/managed.yaml config.yaml
-# Edit config.yaml, especially context and Ops Manager settings.
-export OPS_MANAGER_PUBLIC_KEY='your-public-key'
-export OPS_MANAGER_PRIVATE_KEY='your-private-key'
-export MONGODB_ADMIN_PASSWORD='your-admin-password'
-export MONGODB_SEARCH_SYNC_PASSWORD='your-search-sync-password'
+cp config.yaml.sample config.yaml
+# Edit config.yaml, including context, Ops Manager settings, and credentials.
 ./mongodb-search install -config config.yaml
 ./mongodb-search status -config config.yaml
 ```
 
-The managed install creates a TLS-enabled Enterprise `MongoDB` replica set, an administrator and a Search synchronization user, and an associated `MongoDBSearch` resource. The operator sets the MongoDB search parameters. Credentials are read from the named environment variables and stored in Kubernetes Secrets. The generated self-signed CA is intended for a controlled deployment; provision a suitable PKI for production. The application-specific database users and Search indexes are created separately.
+The CLI requires a YAML or JSON configuration file supplied with `-config`. The sample above configures managed mode with inline credentials. `config.yaml` is ignored by Git; keep it private because inline credentials are stored in plaintext.
+
+Alternatively, use environment variables by replacing `opsManager.publicKey`, `opsManager.privateKey`, `adminPassword`, and `syncPassword` with `opsManager.userEnv`, `opsManager.apiKeyEnv`, `adminPasswordEnv`, and `syncPasswordEnv` respectively. Their values are the names of environment variables, as shown in `examples/managed.yaml`. You can mix the two methods; a nonempty inline value takes precedence over its corresponding environment variable.
+
+The managed install creates a TLS-enabled Enterprise `MongoDB` replica set, an administrator and a Search synchronization user, and an associated `MongoDBSearch` resource. The operator sets the MongoDB search parameters. Credentials are stored in Kubernetes Secrets. The generated self-signed CA is intended for a controlled deployment; provision a suitable PKI for production. The application-specific database users and Search indexes are created separately.
 
 Individual stages can be rerun in order: `init`, `certs`, `deploy-db`, `deploy-search`. Each uses `-config config.yaml`. `install` runs all four and waits for readiness. Existing resources are not adopted or overwritten. Keep the same configuration, context, namespace, and name on reruns and teardown.
 
@@ -31,7 +31,7 @@ Individual stages can be rerun in order: `init`, `certs`, `deploy-db`, `deploy-s
 
 Start with `examples/external.yaml`. Supply the database CA, Search CA, and the `mongot` certificate and private key. Certificates must chain to the Search CA. For multiple Search replicas provide an Envoy server certificate valid for `external.hostname` and an Envoy client certificate, signed by the Search CA. For a single replica, the `mongot` server certificate must be valid for that hostname; Envoy files are unnecessary. Keys must be unencrypted. MongoDB must trust the Search CA and present an appropriate TLS client certificate as required by the Search deployment.
 
-Set `MONGODB_SEARCH_SYNC_PASSWORD` to the password for the existing sync user. The CLI creates a `LoadBalancer` Service; point the chosen DNS hostname at its ingress, then configure each external MongoDB server (for example via Ops Manager) with `mongotHost` and `searchIndexManagementHostAndPort` set to `search.example.com:27028`, `searchTLSMode=requireTLS`, `useGrpcForSearch=true`, and `skipAuthenticationToSearchIndexManagementServer=false`. Use `status` to see the service ingress. Provisioning and DNS propagation are external to this CLI; a Search `Running` phase does not prove queries work end-to-end.
+Set `MONGODB_SEARCH_SYNC_PASSWORD` to the password for the existing sync user, or replace `syncPasswordEnv` with an inline `syncPassword`. The CLI creates a `LoadBalancer` Service; point the chosen DNS hostname at its ingress, then configure each external MongoDB server (for example via Ops Manager) with `mongotHost` and `searchIndexManagementHostAndPort` set to `search.example.com:27028`, `searchTLSMode=requireTLS`, `useGrpcForSearch=true`, and `skipAuthenticationToSearchIndexManagementServer=false`. Use `status` to see the service ingress. Provisioning and DNS propagation are external to this CLI; a Search `Running` phase does not prove queries work end-to-end.
 
 ## Teardown
 

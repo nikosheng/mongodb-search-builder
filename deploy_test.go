@@ -14,12 +14,79 @@ import (
 )
 
 func TestExamplesValidate(t *testing.T) {
-	for _, p := range []string{"examples/managed.yaml", "examples/external.yaml"} {
+	for _, p := range []string{"config.yaml.sample", "examples/managed.yaml", "examples/external.yaml"} {
 		t.Run(p, func(t *testing.T) {
 			if _, err := loadConfig(p); err != nil {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestCredentialSources(t *testing.T) {
+	t.Setenv("TEST_SEARCH_CREDENTIAL", "environment-value")
+	for _, tt := range []struct {
+		name, value, env, want string
+		wantError              bool
+	}{
+		{"inline", "inline-value", "", "inline-value", false},
+		{"environment", "", "TEST_SEARCH_CREDENTIAL", "environment-value", false},
+		{"inline precedence", "inline-value", "TEST_SEARCH_CREDENTIAL", "inline-value", false},
+		{"inline with missing environment", "inline-value", "TEST_SEARCH_MISSING", "inline-value", false},
+		{"missing environment", "", "TEST_SEARCH_MISSING", "", true},
+		{"no source", "", "", "", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := credential(tt.value, tt.env, "testCredential")
+			if (err != nil) != tt.wantError || got != tt.want {
+				t.Fatalf("got %q, error %v; want %q, error %t", got, err, tt.want, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestCredentialConfigValidation(t *testing.T) {
+	for _, path := range []string{"config.yaml.sample", "examples/managed.yaml", "examples/external.yaml"} {
+		t.Run(path, func(t *testing.T) {
+			c, err := loadConfig(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.SyncPassword, c.SyncPasswordEnv = "", ""
+			if err := c.validate(); err == nil {
+				t.Fatal("expected missing sync password failure")
+			}
+		})
+	}
+	base, err := loadConfig("config.yaml.sample")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name  string
+		clear func(*Config)
+	}{
+		{"public key", func(c *Config) { c.OpsManager.PublicKey, c.OpsManager.UserEnv = "", "" }},
+		{"private key", func(c *Config) { c.OpsManager.PrivateKey, c.OpsManager.APIKeyEnv = "", "" }},
+		{"admin password", func(c *Config) { c.AdminPassword, c.AdminPasswordEnv = "", "" }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := *base
+			tt.clear(&c)
+			if err := c.validate(); err == nil {
+				t.Fatal("expected missing credential failure")
+			}
+		})
+	}
+	// Sources can be mixed and JSON accepts the same inline field names.
+	path := filepath.Join(t.TempDir(), "config.json")
+	data := `{"context":"test","mode":"managed","opsManager":{"url":"https://example.com","orgId":"org","project":"project","publicKey":"pub","apiKeyEnv":"PRIVATE_KEY"},"adminPassword":"admin","syncPasswordEnv":"SYNC_PASSWORD"}`
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := loadConfig(path)
+	if err != nil || c.OpsManager.PublicKey != "pub" || c.OpsManager.APIKeyEnv != "PRIVATE_KEY" || c.AdminPassword != "admin" {
+		t.Fatalf("mixed JSON config: %#v, error %v", c, err)
 	}
 }
 func TestConfigValidation(t *testing.T) {

@@ -55,19 +55,19 @@ func (a *App) deployDB(ctx context.Context) error {
 		fmt.Println("External replica set: deploy-db is not required.")
 		return nil
 	}
-	user, err := env(c.OpsManager.UserEnv)
+	user, err := credential(c.OpsManager.PublicKey, c.OpsManager.UserEnv, "opsManager.publicKey")
 	if err != nil {
 		return err
 	}
-	key, err := env(c.OpsManager.APIKeyEnv)
+	key, err := credential(c.OpsManager.PrivateKey, c.OpsManager.APIKeyEnv, "opsManager.privateKey")
 	if err != nil {
 		return err
 	}
-	admin, err := env(c.AdminPasswordEnv)
+	admin, err := credential(c.AdminPassword, c.AdminPasswordEnv, "adminPassword")
 	if err != nil {
 		return err
 	}
-	sync, err := env(c.SyncPasswordEnv)
+	sync, err := credential(c.SyncPassword, c.SyncPasswordEnv, "syncPassword")
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func (a *App) deployDB(ctx context.Context) error {
 }
 func (a *App) deploySearch(ctx context.Context) error {
 	c := a.c
-	sync, err := env(c.SyncPasswordEnv)
+	sync, err := credential(c.SyncPassword, c.SyncPasswordEnv, "syncPassword")
 	if err != nil {
 		return err
 	}
@@ -158,12 +158,16 @@ func searchSpec(c *Config) map[string]interface{} {
 	return m("source", source, "security", m("tls", m("certsSecretPrefix", "certs")), "clusters", []interface{}{cluster})
 }
 func (a *App) init(ctx context.Context) error {
-	if _, err := env(a.c.SyncPasswordEnv); err != nil {
+	if _, err := credential(a.c.SyncPassword, a.c.SyncPasswordEnv, "syncPassword"); err != nil {
 		return err
 	}
 	if a.c.Mode == "managed" {
-		for _, name := range []string{a.c.AdminPasswordEnv, a.c.OpsManager.UserEnv, a.c.OpsManager.APIKeyEnv} {
-			if _, err := env(name); err != nil {
+		for _, entry := range []struct{ value, env, field string }{
+			{a.c.AdminPassword, a.c.AdminPasswordEnv, "adminPassword"},
+			{a.c.OpsManager.PublicKey, a.c.OpsManager.UserEnv, "opsManager.publicKey"},
+			{a.c.OpsManager.PrivateKey, a.c.OpsManager.APIKeyEnv, "opsManager.privateKey"},
+		} {
+			if _, err := credential(entry.value, entry.env, entry.field); err != nil {
 				return err
 			}
 		}

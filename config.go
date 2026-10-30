@@ -24,12 +24,16 @@ type Config struct {
 	OperatorChartVersion    string `json:"operatorChartVersion"`
 	CertManagerChartVersion string `json:"certManagerChartVersion"`
 	OpsManager              struct {
-		URL       string `json:"url"`
-		OrgID     string `json:"orgId"`
-		Project   string `json:"project"`
-		UserEnv   string `json:"userEnv"`
-		APIKeyEnv string `json:"apiKeyEnv"`
+		URL        string `json:"url"`
+		OrgID      string `json:"orgId"`
+		Project    string `json:"project"`
+		PublicKey  string `json:"publicKey"`
+		PrivateKey string `json:"privateKey"`
+		UserEnv    string `json:"userEnv"`
+		APIKeyEnv  string `json:"apiKeyEnv"`
 	} `json:"opsManager"`
+	AdminPassword    string `json:"adminPassword"`
+	SyncPassword     string `json:"syncPassword"`
 	AdminPasswordEnv string `json:"adminPasswordEnv"`
 	SyncPasswordEnv  string `json:"syncPasswordEnv"`
 	External         struct {
@@ -96,8 +100,8 @@ func (c *Config) validate() error {
 	if t, err := time.ParseDuration(c.Timeout); err != nil || t <= 0 {
 		return fmt.Errorf("timeout must be a positive duration")
 	}
-	if c.SyncPasswordEnv == "" {
-		return fmt.Errorf("syncPasswordEnv is required")
+	if c.SyncPassword == "" && c.SyncPasswordEnv == "" {
+		return fmt.Errorf("syncPassword or syncPasswordEnv is required")
 	}
 	if c.Mode == "managed" {
 		v := regexp.MustCompile(`^([0-9]+)\.([0-9]+)\.[0-9]+-ent$`)
@@ -110,8 +114,11 @@ func (c *Config) validate() error {
 		if major < 8 || (major == 8 && minor < 3) {
 			return fmt.Errorf("version must be MongoDB Enterprise 8.3 or later (e.g. 8.3.4-ent)")
 		}
-		if c.OpsManager.URL == "" || c.OpsManager.OrgID == "" || c.OpsManager.Project == "" || c.OpsManager.UserEnv == "" || c.OpsManager.APIKeyEnv == "" || c.AdminPasswordEnv == "" {
-			return fmt.Errorf("managed mode requires opsManager settings and adminPasswordEnv")
+		if c.OpsManager.URL == "" || c.OpsManager.OrgID == "" || c.OpsManager.Project == "" ||
+			(c.OpsManager.PublicKey == "" && c.OpsManager.UserEnv == "") ||
+			(c.OpsManager.PrivateKey == "" && c.OpsManager.APIKeyEnv == "") ||
+			(c.AdminPassword == "" && c.AdminPasswordEnv == "") {
+			return fmt.Errorf("managed mode requires opsManager settings and an admin password (inline or environment variable)")
 		}
 	} else {
 		if len(c.External.Hosts) == 0 || c.External.Hostname == "" || c.External.DatabaseCAFile == "" || c.External.SearchCAFile == "" || c.External.SearchCertFile == "" || c.External.SearchKeyFile == "" {
@@ -132,7 +139,13 @@ func (c *Config) validate() error {
 	return nil
 }
 
-func env(name string) (string, error) {
+func credential(value, name, field string) (string, error) {
+	if value != "" {
+		return value, nil
+	}
+	if name == "" {
+		return "", fmt.Errorf("%s or its environment variable is required", field)
+	}
 	v := os.Getenv(name)
 	if v == "" {
 		return "", fmt.Errorf("environment variable %s is required", name)
