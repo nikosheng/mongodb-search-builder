@@ -174,6 +174,8 @@ Complete these steps before either external use case:
 4. Obtain the Search CA and certificates listed in the relevant use case below. Use PEM files and unencrypted private keys; include intermediate certificates in the certificate file if needed. Configure the external MongoDB deployment to trust the Search CA and provide the TLS client identity required by your deployment. The CLI verifies that the provided Search certificates and keys match, chain to `searchCAFile`, have the appropriate server/client purpose, and, where required, match `external.hostname`.
 5. Prepare to configure the external `mongod` startup parameters in [Connect external MongoDB to Search](#connect-external-mongodb-to-search). The CLI cannot change those settings for you.
 
+For an OpenSSL test certificate walkthrough, see the [external certificate guide](docs/external-certificate-guide.md).
+
 ## Use case 3: External replica set with one Search replica
 
 Use this for an existing external replica set and a single Kubernetes-hosted `mongot`. The external LoadBalancer exposes the Search endpoint to MongoDB.
