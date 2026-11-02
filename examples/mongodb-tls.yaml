@@ -1,0 +1,67 @@
+# mongodb-tls configuration: enables TLS on an existing replica set managed
+# by Cloud Manager or Ops Manager. Replace every placeholder before running.
+cloudManager:
+  url: https://cloud.mongodb.com     # or your Ops Manager base URL
+  orgId: your-organization-id
+  projectId: your-project-id
+  publicKey: your-api-public-key
+  privateKeyEnv: MDB_CM_API_PRIVATE_KEY   # export this before running
+
+deployment:
+  topology: replicaSet
+  name: rs0                          # the replica set _id as shown in Cloud/Ops Manager
+
+pki:
+  mode: generate                     # generate | import
+  dir: ./pki
+  caSubject: "CN=MongoDB Replica Set CA"
+  keyAlgorithm: rsa
+  keySize: 3072
+  validityDays: 397
+  memberAttributes:
+    O: ExampleCorp
+    OU: MongoDB Server
+  san:
+    includeLocalhost: false
+    extraDns: []
+    extraIps: []
+  # import mode only:
+  # caFile: /absolute/path/db-ca.pem
+  # certs:
+  #   rs0_1: {certFile: /absolute/path/mongo1.crt, keyFile: /absolute/path/mongo1.key}
+  #   rs0_2: {certFile: /absolute/path/mongo2.crt, keyFile: /absolute/path/mongo2.key}
+  #   rs0_3: {certFile: /absolute/path/mongo3.crt, keyFile: /absolute/path/mongo3.key}
+
+hosts:
+  - processName: rs0_1               # must match the process name in the automation config
+    hostname: mongo1.example.com
+    sshUser: mongod
+    sshKey: ~/.ssh/id_ed25519
+    targetDir: /etc/ssl/mongodb
+    owner: mongod:mongod
+  - processName: rs0_2
+    hostname: mongo2.example.com
+    sshUser: mongod
+    sshKey: ~/.ssh/id_ed25519
+    targetDir: /etc/ssl/mongodb
+    owner: mongod:mongod
+  - processName: rs0_3
+    hostname: mongo3.example.com
+    sshUser: mongod
+    sshKey: ~/.ssh/id_ed25519
+    targetDir: /etc/ssl/mongodb
+    owner: mongod:mongod
+
+tls:
+  allowConnectionsWithoutCertificates: true   # required for mongot (MongoDB Search)
+  disabledProtocols: [TLS1_0, TLS1_1]
+  caFileOnHosts: /etc/ssl/mongodb/db-ca.pem
+  certFileOnHostsTemplate: "/etc/ssl/mongodb/{{.ProcessName}}.pem"
+  rollout:
+    pauseBetweenStages: 10m
+    requireHealthy: true
+
+rollback:
+  snapshotDir: ./backup
+
+timeout: 15m

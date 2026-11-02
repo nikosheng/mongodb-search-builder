@@ -15,7 +15,7 @@ import (
 )
 
 func TestExamplesValidate(t *testing.T) {
-	for _, p := range []string{"config.yaml.sample", "examples/managed.yaml", "examples/external.yaml"} {
+	for _, p := range []string{"../../config.yaml.sample", "../../examples/managed.yaml", "../../examples/external.yaml"} {
 		t.Run(p, func(t *testing.T) {
 			if _, err := loadConfig(p); err != nil {
 				t.Fatal(err)
@@ -47,7 +47,7 @@ func TestCredentialSources(t *testing.T) {
 }
 
 func TestCredentialConfigValidation(t *testing.T) {
-	for _, path := range []string{"config.yaml.sample", "examples/managed.yaml", "examples/external.yaml"} {
+	for _, path := range []string{"../../config.yaml.sample", "../../examples/managed.yaml", "../../examples/external.yaml"} {
 		t.Run(path, func(t *testing.T) {
 			c, err := loadConfig(path)
 			if err != nil {
@@ -59,7 +59,7 @@ func TestCredentialConfigValidation(t *testing.T) {
 			}
 		})
 	}
-	base, err := loadConfig("config.yaml.sample")
+	base, err := loadConfig("../../config.yaml.sample")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestCredentialConfigValidation(t *testing.T) {
 	}
 }
 func TestConfigValidation(t *testing.T) {
-	base, err := loadConfig("examples/managed.yaml")
+	base, err := loadConfig("../../examples/managed.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestResourceSpecifications(t *testing.T) {
 }
 
 func TestResourceConfigValidation(t *testing.T) {
-	base, err := loadConfig("config.yaml.sample")
+	base, err := loadConfig("../../config.yaml.sample")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestResourceConfigValidation(t *testing.T) {
 			}
 		})
 	}
-	external, err := loadConfig("examples/external.yaml")
+	external, err := loadConfig("../../examples/external.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestResourceConfigValidation(t *testing.T) {
 }
 
 func TestResourceConfigParsing(t *testing.T) {
-	base, err := os.ReadFile("config.yaml.sample")
+	base, err := os.ReadFile("../../config.yaml.sample")
 	if err != nil {
 		t.Fatal(err)
 	}

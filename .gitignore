@@ -1,4 +1,9 @@
 /mongodb-search
+/mongodb-tls
+/bin
 /config.yaml
+/mongodb-tls.yaml
+/pki
+/backup
 .DS_Store
 .DS_Store.DS_Store.DS_Store

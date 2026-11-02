@@ -1,4 +1,24 @@
-# MongoDB Search Kubernetes CLI
+# MongoDB Search and TLS CLIs
+
+This repository builds two command-line tools:
+
+| Binary | Purpose |
+| --- | --- |
+| [`mongodb-search`](#mongodb-search-kubernetes-cli) | Deploys MongoDB Search and Vector Search on Kubernetes, against a new operator-managed replica set or an existing external one. |
+| [`mongodb-tls`](docs/mongodb-tls.md) | Enables TLS on an existing MongoDB replica set managed by Cloud Manager or Ops Manager: generates or imports certificates, distributes them over SSH, and drives a staged `allowTLS` → `preferTLS` → `requireTLS` rollout. |
+
+If your external replica set (used by `mongodb-search`'s external mode) does not yet use TLS, run `mongodb-tls` first; see [docs/mongodb-tls.md](docs/mongodb-tls.md). The two tools are independent: `mongodb-tls` never touches Kubernetes, and `mongodb-search` never touches Cloud/Ops Manager's Automation API.
+
+Build both from the repository root:
+
+```sh
+go build -o mongodb-search ./cmd/mongodb-search
+go build -o mongodb-tls ./cmd/mongodb-tls
+```
+
+The rest of this document covers `mongodb-search`.
+
+## MongoDB Search Kubernetes CLI
 
 This CLI prepares MongoDB Enterprise replica sets for MongoDB Search and Vector Search on a single Kubernetes cluster. It can create an operator-managed replica set or connect Search to an existing external replica set. Search can run as one `mongot` instance or as multiple instances behind an operator-managed Envoy load balancer.
 
@@ -25,7 +45,7 @@ The CLI uses Kubernetes client-go and the Helm Go SDK: `kubectl` and `helm` exec
 Additional requirements:
 
 - **Managed:** MongoDB Ops Manager or Cloud Manager, an organization ID, project name, and API credentials with the permissions required to manage the project and deployment. The cluster must reach Ops Manager or Cloud Manager. Use a supported MongoDB Enterprise version in `X.Y.Z-ent` format, 8.3 or later.
-- **External:** An existing TLS-enabled MongoDB Enterprise replica set, version 8.3 or later. Kubernetes must reach its MongoDB members; those members must be able to reach a Kubernetes `LoadBalancer` endpoint on port `27028`. You need control of DNS, the external MongoDB settings, and the required TLS certificates. See [external preparation](#prepare-an-external-replica-set).
+- **External:** An existing TLS-enabled MongoDB Enterprise replica set, version 8.3 or later. If TLS is not yet enabled, use [`mongodb-tls`](docs/mongodb-tls.md) to enable it against your Cloud Manager or Ops Manager deployment before continuing here. Kubernetes must reach its MongoDB members; those members must be able to reach a Kubernetes `LoadBalancer` endpoint on port `27028`. You need control of DNS, the external MongoDB settings, and the required TLS certificates. See [external preparation](#prepare-an-external-replica-set).
 
 The CLI does not configure sharded clusters, Community Edition, automatic embeddings, application users, or Search indexes.
 
@@ -34,7 +54,7 @@ The CLI does not configure sharded clusters, Community Edition, automatic embedd
 From the project directory:
 
 ```sh
-go build -o mongodb-search .
+go build -o mongodb-search ./cmd/mongodb-search
 ```
 
 Each command reads a YAML or JSON file. The default is `config.yaml`; all examples explicitly pass `-config config.yaml`. Start with `config.yaml.sample` for managed mode or `examples/external.yaml` for external mode. For example:
@@ -168,7 +188,7 @@ The operator manages Search endpoint settings on the managed MongoDB deployment.
 
 Complete these steps before either external use case:
 
-1. Verify the existing replica set runs MongoDB Enterprise 8.3 or later, uses TLS, and has network-reachable member addresses. Obtain the public CA certificate that signed the MongoDB server certificates.
+1. Verify the existing replica set runs MongoDB Enterprise 8.3 or later, uses TLS, and has network-reachable member addresses. Obtain the public CA certificate that signed the MongoDB server certificates. If TLS is not yet enabled, run [`mongodb-tls`](docs/mongodb-tls.md) first.
 2. In Cloud Manager or Ops Manager, open **Security > Users**, add the user `search-sync-source` in authentication database `admin`, and grant it the `searchCoordinator` role on `admin`. Set a strong password. If your deployment is managed by another system, create the equivalent user through that system. Use this same password for `syncPassword`. The CLI does **not** create the user in external mode.
 3. Choose a DNS name such as `search.example.com` for the external Search endpoint. Arrange for it to resolve to the Kubernetes LoadBalancer ingress, and ensure the MongoDB members can reach port `27028`. Kubernetes must also be able to reach each member on the configured MongoDB port. Open the necessary firewall rules in both directions.
 4. Obtain the Search CA and certificates listed in the relevant use case below. Use PEM files and unencrypted private keys; include intermediate certificates in the certificate file if needed. Configure the external MongoDB deployment to trust the Search CA and provide the TLS client identity required by your deployment. The CLI verifies that the provided Search certificates and keys match, chain to `searchCAFile`, have the appropriate server/client purpose, and, where required, match `external.hostname`.
